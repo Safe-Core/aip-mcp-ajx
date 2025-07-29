@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "condominio-access": {
+    "aip-mcp-ajx": {
       "command": "node",
       "args": ["./dist/index.js"],
       "cwd": "c:\\Users\\User\\Documents\\aegis-agents\\aip-mcp-ouroville",
