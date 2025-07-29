@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "condominio-access": {
+      "command": "node",
+      "args": ["./dist/index.js"],
+      "cwd": "c:\\Users\\User\\Documents\\aegis-agents\\aip-mcp-ouroville",
+      "env": {
+        "QDRANT_URL": "http://localhost:6333",
+        "QDRANT_COLLECTION_NAME": "condominio_access"
+      }
+    }
+  }
+}
