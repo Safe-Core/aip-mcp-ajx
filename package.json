@@ -1,7 +1,7 @@
 {
-  "name": "condominio-access-mcp",
+  "name": "@safecore/aip-mcp-ajx",
   "version": "1.0.0",
-  "description": "MCP Server para busca de dados de controle de acesso em condomínios usando Qdrant",
+  "description": "Busca de dados de controle de acesso em condomínios usando Qdrant.",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -24,8 +24,8 @@
     "qdrant",
     "agnos"
   ],
-  "author": "Your Name",
-  "license": "MIT",
+  "author": "Safe Core",
+  "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@qdrant/js-client-rest": "^1.10.0",
