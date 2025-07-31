@@ -1,4 +1,4 @@
-# Condomínio Access MCP Server
+# AJX MCP
 
 Um servidor MCP (Model Context Protocol) para buscar e consultar dados de controle de acesso de condomínios armazenados no Qdrant.
 
@@ -17,13 +17,13 @@ Este servidor MCP permite realizar buscas avançadas em registros de acesso de c
 
 1. Clone o repositório:
 ```bash
-git clone <seu-repo>
+git clone <repo>
 cd aip-mcp-ouroville
 ```
 
 2. Instale as dependências:
 ```bash
-npm install
+pnpm install
 ```
 
 3. Configure as variáveis de ambiente:
@@ -42,7 +42,7 @@ MCP_SERVER_VERSION=1.0.0
 
 4. Compile o projeto:
 ```bash
-npm run build
+pnpm run build
 ```
 
 ## 🔧 Configuração
