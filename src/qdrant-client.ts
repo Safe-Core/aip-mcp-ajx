@@ -47,8 +47,21 @@ export class CondominioQdrantClient {
     offset: number = 0
   ): Promise<QdrantSearchResult> {
     try {
+      // Verifica se o texto de consulta parece ser um nome de pessoa
+      if (this.verificaSeEhNomePessoa(query)) {
+        try {
+          // Se parece ser um nome, usa a busca avançada com mais prioridade para visitantes
+          return await this.buscarPorTextoAvancado(query, limit, offset, 0.5);
+        } catch (error) {
+          console.error('Erro na busca avançada por nome:', error);
+          // Continua com a busca padrão se falhar
+        }
+      }
+      
+      // Busca padrão
+      const queryPreparada = this.prepararTextoParaBusca(query);
       const searchResult = await this.client.search(this.collectionName, {
-        vector: await this.generateEmbedding(query),
+        vector: await this.generateEmbedding(queryPreparada),
         limit,
         offset,
         with_payload: true,
@@ -186,9 +199,18 @@ export class CondominioQdrantClient {
     const conditions: any[] = [];
 
     if (params.pessoa_nome) {
+      // Filtro mais flexível para nomes de pessoas, usando should para verificar em múltiplos campos
       conditions.push({
-        key: 'pessoa_nome',
-        match: { text: params.pessoa_nome }
+        should: [
+          {
+            key: 'pessoa_nome',
+            match: { text: params.pessoa_nome }
+          },
+          {
+            key: 'original_record.busca_otimizada.nomes_relacionados',
+            match: { text: params.pessoa_nome }
+          }
+        ]
       });
     }
 
@@ -279,12 +301,67 @@ export class CondominioQdrantClient {
     query: string,
     limit: number = 10,
     offset: number = 0,
-    scoreThreshold: number = 0.7
+    scoreThreshold: number = 0.55 // Reduzido para capturar mais resultados
   ): Promise<QdrantSearchResult> {
     try {
       // Prepara o texto da query para melhor matching
       const queryPreparada = this.prepararTextoParaBusca(query);
       
+      // Verifica se a consulta parece ser uma busca por nome de pessoa
+      const pareceSerNomePessoa = this.verificaSeEhNomePessoa(query);
+      
+      // Se parece ser nome de pessoa, vamos fazer uma busca híbrida
+      if (pareceSerNomePessoa) {
+        // Primeira tentativa: busca direta com filtro pessoa_nome
+        const nomeFiltrado = query.normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase().trim();
+          
+        try {
+          // Faz busca híbrida: por filtro e vetor
+          const searchResult = await this.client.search(this.collectionName, {
+            vector: await this.generateEmbedding(queryPreparada),
+            filter: {
+              should: [
+                // Verifica se o nome está no campo pessoa_nome (maior peso para visitante)
+                { 
+                  key: 'pessoa_nome',
+                  match: { text: nomeFiltrado } 
+                },
+                // Ou nos nomes_relacionados (via busca_otimizada)
+                {
+                  key: 'original_record.busca_otimizada.nomes_relacionados',
+                  match: { text: nomeFiltrado }
+                }
+              ]
+            },
+            limit,
+            offset,
+            score_threshold: scoreThreshold,
+            with_payload: true,
+            with_vector: false,
+          });
+
+          // Se encontrou resultados, ótimo
+          if (searchResult.length > 0) {
+            const records = searchResult.map(result => {
+              const validated = RegistroAcessoSchema.parse(result.payload);
+              return validated;
+            });
+            
+            return {
+              records,
+              total: records.length,
+              hasMore: records.length === limit,
+            };
+          }
+        } catch (err) {
+          console.error('Erro na busca híbrida:', err);
+          // Continua com a busca padrão se falhar
+        }
+      }
+      
+      // Busca padrão se não for nome de pessoa ou se a busca com filtro não retornou resultados
       const searchResult = await this.client.search(this.collectionName, {
         vector: await this.generateEmbedding(queryPreparada),
         limit,
@@ -321,21 +398,96 @@ export class CondominioQdrantClient {
       .toUpperCase()
       .trim();
 
-    // Adiciona contexto para melhorar a busca semântica
+    // Adiciona contexto para melhorar a busca semântica, priorizando visitante (pessoa)
     const contextos = [
+      'VISITANTE',
+      'PESSOA',
+      'DOCUMENTO',
+      'NOME COMPLETO',
       'Registro de acesso condomínio',
-      'Pessoa visitante morador',
       'Entrada saída veículo',
       'Controle acesso portaria'
     ];
 
+    // Verifica se o texto contém palavras-chave que sugerem busca por visitante
+    const palavrasVisitante = ['VISITA', 'VISITANTE', 'PESSOA', 'PEDREIRO', 'FAXINEIRO', 'ENTREGADOR', 'MOTORISTA', 'PRESTADOR', 'PRESTADOR DE SERVIÇO'];
+    
     // Se a query é curta, adiciona contexto
     if (textoPreparado.length < 50) {
-      textoPreparado = `${contextos.join(' ')} ${textoPreparado}`;
+      const temPalavraVisitante = palavrasVisitante.some(palavra => textoPreparado.includes(palavra));
+      
+      if (!temPalavraVisitante) {
+        // Duplica o texto de busca para dar mais peso ao visitante
+        textoPreparado = `PESSOA NOME ${textoPreparado} VISITANTE ${textoPreparado} ${contextos.join(' ')} ${textoPreparado}`;
+      } else {
+        textoPreparado = `${contextos.join(' ')} ${textoPreparado}`;
+      }
     }
 
     return textoPreparado;
   }
+
+  /**
+   * Verifica se o texto de consulta parece ser um nome de pessoa
+   */
+  private verificaSeEhNomePessoa(texto: string): boolean {
+    // Normaliza e limpa o texto
+    const textoNormalizado = texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .trim();
+    
+    // Palavras que indicam referência explícita a um morador
+    const palavrasChaveMorador = ['MORADOR', 'RESIDENTE', 'PROPRIETARIO', 'APARTAMENTO', 'QUADRA'];
+    
+    // Se contém palavras-chave de morador, não considerar como busca por pessoa/visitante
+    if (palavrasChaveMorador.some(palavra => textoNormalizado.includes(palavra))) {
+      return false;
+    }
+    
+    // Se tem menos de 3 palavras, é provavelmente uma busca mais genérica
+    const palavras = textoNormalizado.split(/\s+/);
+    if (palavras.length < 2) {
+      return false;
+    }
+    
+    // Termos comuns em nomes próprios (como preposições) que não contam como palavras significativas
+    const preposicoes = ['DE', 'DA', 'DO', 'DOS', 'DAS', 'E'];
+    
+    // Conta palavras significativas (não preposições)
+    const palavrasSignificativas = palavras.filter(palavra => 
+      !preposicoes.includes(palavra) && palavra.length > 1
+    );
+    
+    // Se tiver pelo menos 2 palavras significativas, provavelmente é um nome
+    return palavrasSignificativas.length >= 2;
+  }
+  /**
+   * Verifica a conexão com o Qdrant e retorna informações da coleção
+   */
+  async verificarConexao(): Promise<any> {
+    try {
+      // Verifica se o cliente está conectado obtendo informações da coleção
+      const colecaoInfo = await this.client.getCollection(this.collectionName);
+      
+      // Obtém contagem de pontos na coleção
+      const contagem = await this.client.count(this.collectionName);
+      
+      return {
+        status: "conectado",
+        collectionName: this.collectionName,
+        vetoresCount: colecaoInfo.vectors_count,
+        pontos: contagem.count,
+        dimensao: colecaoInfo.config?.params?.vectors?.size || 0,
+        tipo_distancia: colecaoInfo.config?.params?.vectors?.distance || "unknown"
+      };
+    } catch (error) {
+      console.error('Erro ao verificar conexão:', error);
+      throw new Error(`Falha ao verificar conexão com Qdrant: ${error}`);
+    }
+  }
+
   private async generateEmbedding(text: string): Promise<number[]> {
     if (!this.openaiClient) {
       throw new Error('Cliente OpenAI não configurado. Verifique se OPENAI_API_KEY está definida.');

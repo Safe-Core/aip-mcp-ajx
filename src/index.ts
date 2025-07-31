@@ -101,10 +101,10 @@ class CondominioAccessMCPServer {
                 },
                 score_threshold: {
                   type: 'number',
-                  description: 'Threshold mínimo de score de similaridade (padrão: 0.7)',
+                  description: 'Threshold mínimo de score de similaridade (padrão: 0.55)',
                   minimum: 0,
                   maximum: 1,
-                  default: 0.7,
+                  default: 0.55,
                 },
               },
               required: ['query'],
@@ -358,7 +358,7 @@ class CondominioAccessMCPServer {
   }
 
   private async buscarAcessoTextoAvancado(args: any) {
-    const { query, limit = 10, offset = 0, score_threshold = 0.7 } = args;
+    const { query, limit = 10, offset = 0, score_threshold = 0.55 } = args;
     
     const resultado = await this.qdrantClient.buscarPorTextoAvancado(query, limit, offset, score_threshold);
     
@@ -502,20 +502,20 @@ class CondominioAccessMCPServer {
     
     records.forEach((registro: RegistroAcesso, index: number) => {
       output += `## Registro ${index + 1} - ID: ${registro.id}\n\n`;
-      output += `👤 **Pessoa:** ${registro.pessoa_nome}\n`;
-      output += `📄 **Documento:** ${registro.pessoa_documento}\n`;
-      output += `🏠 **Destino:** ${registro.morador_nome} - ${registro.residencia_endereco}\n`;
-      output += `📅 **Entrada:** ${registro.entrada_datetime}\n`;
-      output += `📅 **Saída:** ${registro.saida_datetime}\n`;
-      output += `⏱️ **Permanência:** ${registro.tempo_permanencia_minutos} minutos\n`;
-      output += `📍 **Status:** ${registro.ainda_dentro ? '🔴 Ainda dentro' : '✅ Saiu'}\n`;
+      output += `**Pessoa:** ${registro.pessoa_nome}\n`;
+      output += `**Documento:** ${registro.pessoa_documento}\n`;
+      output += `**Destino:** ${registro.morador_nome} - ${registro.residencia_endereco}\n`;
+      output += `**Entrada:** ${registro.entrada_datetime}\n`;
+      output += `**Saída:** ${registro.saida_datetime}\n`;
+      output += `**Permanência:** ${registro.tempo_permanencia_minutos} minutos\n`;
+      output += `**Status:** ${registro.ainda_dentro ? 'Ainda dentro' : 'Saiu'}\n`;
       
       if (registro.tem_veiculo && registro.original_record?.veiculo) {
         const veiculo = registro.original_record.veiculo;
-        output += `🚗 **Veículo:** ${veiculo.marca} ${veiculo.modelo} ${veiculo.cor} - ${veiculo.placa}\n`;
+        output += `**Veículo:** ${veiculo.marca} ${veiculo.modelo} ${veiculo.cor} - ${veiculo.placa}\n`;
       }
       
-      output += `🕒 **Período:** ${registro.periodo_dia} - ${registro.dia_semana}\n`;
+      output += `**Período:** ${registro.periodo_dia} - ${registro.dia_semana}\n`;
       output += '\n---\n\n';
     });
     
