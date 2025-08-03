@@ -9,9 +9,10 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "inspect:dev": "npx @modelcontextprotocol/inspector tsx src/index.ts",
     "prepare-indices": "node dist/criar-indices.js",
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
