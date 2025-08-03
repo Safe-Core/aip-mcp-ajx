@@ -1,7 +1,7 @@
 {
   "name": "@safecore/aip-mcp-ajx",
-  "version": "1.0.2",
-  "description": "Busca de dados de controle de acesso em condomínios usando Qdrant.",
+  "version": "1.1.0",
+  "description": "Busca de dados de controle de acesso em condomínios usando Qdrant e rastreamento integrado com Firestore.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -17,6 +17,9 @@
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
     "test": "tsx src/test.ts",
+    "test:rastreamento": "tsx tests/teste-rastreamento-visitante.ts",
+    "test:tokensteps": "tsx tests/teste-token-steps.ts",
+    "test:visitante": "tsx tests/teste-buscar-rastreamento-visitante.ts",
     "examples": "tsx src/examples.ts",
     "prepare": "npm run clean && npm run build"
   },
@@ -34,6 +37,7 @@
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@qdrant/js-client-rest": "^1.10.0",
     "dotenv": "^16.4.5",
+    "firebase": "^12.0.0",
     "openai": "^4.104.0",
     "zod": "^3.23.8"
   },

@@ -233,4 +233,7 @@ export type BuscaParametrosInput = {
   dia_semana?: 'segunda' | 'terca' | 'quarta' | 'quinta' | 'sexta' | 'sabado' | 'domingo';
   limit?: number;
   offset?: number;
+  buscar_rastreamento?: boolean;
+  incluir_mapa?: boolean;
+  incluir_svg?: boolean;
 };
