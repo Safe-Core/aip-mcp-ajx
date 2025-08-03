@@ -1,6 +1,6 @@
 # AJX MCP
 
-Um servidor MCP (Model Context Protocol) para buscar e consultar dados de controle de acesso de condomínios armazenados no Qdrant.
+Um servidor MCP (Model Context Protocol) para buscar e consultar dados de controle de acesso de condomínios armazenados no Qdrant e integrado com rastreamento de visitantes via Firestore.
 
 ## 🏢 Sobre
 
@@ -12,6 +12,9 @@ Este servidor MCP permite realizar buscas avançadas em registros de acesso de c
 - Lista de visitantes por morador
 - Consulta de pessoas ainda dentro do condomínio
 - Busca por placa de veículo
+- **NOVO:** Rastreamento de visitantes com SafeTags
+- **NOVO:** Visualização de histórico de movimentação em mapas interativos
+- **NOVO:** Integração com Firebase/Firestore para dados de rastreamento
 
 ## 🚀 Instalação
 
@@ -33,11 +36,26 @@ cp .env.example .env
 
 Edite o arquivo `.env` com suas configurações:
 ```env
+# Configuração do servidor MCP
+MCP_SERVER_NAME=condominio-access-mcp
+MCP_SERVER_VERSION=1.1.0
+
+# Configuração do Qdrant
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=sua_api_key_aqui
 QDRANT_COLLECTION_NAME=condominio_access
-MCP_SERVER_NAME=condominio-access-mcp
-MCP_SERVER_VERSION=1.0.0
+
+# Configuração da OpenAI para embeddings
+OPENAI_API_KEY=sua_openai_api_key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+
+# Configuração do Firebase/Firestore
+FIREBASE_API_KEY=sua_firebase_api_key
+FIREBASE_AUTH_DOMAIN=seu-projeto.firebaseapp.com
+FIREBASE_PROJECT_ID=seu-projeto
+FIREBASE_STORAGE_BUCKET=seu-projeto.appspot.com
+FIREBASE_MESSAGING_SENDER_ID=seu_messaging_sender_id
+FIREBASE_APP_ID=seu_app_id
 ```
 
 4. Compile o projeto:
@@ -214,12 +232,35 @@ O servidor trabalha com registros de acesso que contêm informações sobre:
 }
 ```
 
-## 🛡️ Segurança
+## � Ferramentas de Rastreamento (Novas)
 
-- Configure adequadamente as credenciais do Qdrant no arquivo `.env`
+### 8. `buscar_rastreamento_visitante`
+Busca informações de rastreamento de um visitante no Firestore.
+
+**Parâmetros:**
+- `nome_visitante` (obrigatório): Nome do visitante para buscar
+- `incluir_mapa_html` (opcional): Se deve incluir mapa HTML (padrão: false)
+- `incluir_mapa_svg` (opcional): Se deve incluir mapa SVG (padrão: false)
+
+### 9. `buscar_acesso_com_rastreamento`
+Busca registros de acesso e informações de rastreamento combinados.
+
+**Parâmetros:**
+- `query` (opcional): Texto para busca semântica
+- `pessoa_nome` (opcional): Nome da pessoa
+- `pessoa_documento` (opcional): Documento da pessoa
+- `morador_nome` (opcional): Nome do morador visitado
+- `limite_registros` (opcional): Número máximo de registros (padrão: 5)
+- `incluir_mapa_html` (opcional): Se deve incluir mapa HTML (padrão: false)
+- `incluir_mapa_svg` (opcional): Se deve incluir mapa SVG (padrão: true)
+
+## �🛡️ Segurança
+
+- Configure adequadamente as credenciais do Qdrant e Firebase no arquivo `.env`
 - Mantenha o arquivo `.env` fora do controle de versão
 - Use HTTPS em produção
 - Implemente autenticação adequada conforme necessário
+- Proteja adequadamente as credenciais do Firebase
 
 ## 📝 Logs e Debugging
 
