@@ -1,6 +1,6 @@
 {
   "name": "@safecore/aip-mcp-ajx",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Busca de dados de controle de acesso em condomínios usando Qdrant e rastreamento integrado com Firestore.",
   "main": "dist/index.js",
   "type": "module",
