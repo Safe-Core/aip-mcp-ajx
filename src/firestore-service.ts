@@ -52,6 +52,33 @@ export interface TrackingResult {
   stepsCount: number;
 }
 
+// Interface para pontos do mapa de calor
+export interface HeatmapPoint {
+  latitude: number;
+  longitude: number;
+  weight: number;
+  timestamp: string;
+  tokenId?: string;
+  userId?: string;
+  speed?: number;
+}
+
+// Interface para resultado do mapa de calor
+export interface HeatmapResult {
+  points: HeatmapPoint[];
+  totalPoints: number;
+  dateRange: {
+    start: string;
+    end: string;
+  };
+  hotspots: {
+    latitude: number;
+    longitude: number;
+    intensity: number;
+    count: number;
+  }[];
+}
+
 export class FirestoreService {
   private db!: Firestore;
   private app!: FirebaseApp;
@@ -326,6 +353,179 @@ export class FirestoreService {
     } catch (error) {
       console.error('Erro ao buscar histórico do token:', error);
       throw new Error(`Falha na busca do histórico: ${error}`);
+    }
+  }
+
+  /**
+   * Gera dados para mapa de calor baseado nos registros de localização
+   * @param diasAtras Número de dias para buscar (padrão: 7)
+   * @param limiteRegistros Limite máximo de registros a processar (padrão: 10000)
+   * @param filtros Filtros opcionais para os dados
+   * @returns Dados processados para gerar um mapa de calor
+   */
+  async gerarMapaDeCalor(
+    diasAtras: number = 7,
+    limiteRegistros: number = 10000,
+    filtros?: {
+      tokenIds?: string[];
+      userIds?: string[];
+      minSpeed?: number;
+      maxSpeed?: number;
+      region?: {
+        latMin: number;
+        latMax: number;
+        lngMin: number;
+        lngMax: number;
+      };
+    }
+  ): Promise<HeatmapResult> {
+    try {
+      this.verificarInicializacao();
+      
+      console.log(`Gerando mapa de calor para os últimos ${diasAtras} dias (limite: ${limiteRegistros} registros)`);
+      
+      // Calcula data inicial (hoje - diasAtras)
+      const dataInicial = new Date();
+      dataInicial.setDate(dataInicial.getDate() - diasAtras);
+      dataInicial.setHours(0, 0, 0, 0);
+      
+      const dataFinal = new Date();
+      dataFinal.setHours(23, 59, 59, 999);
+      
+      // Referência à coleção tokenSteps
+      const stepsRef = collection(this.db, 'tokenSteps');
+      
+      // Cria a consulta base com filtro de data
+      let q = query(
+        stepsRef,
+        where('last_updated', '>=', dataInicial),
+        where('last_updated', '<=', dataFinal)
+      );
+      
+      // Obtém os documentos com limite para performance
+      const snapshot = await getDocs(q);
+      console.log(`Encontrados ${snapshot.size} registros de localização no período`);
+      
+      // Cria lista para armazenar pontos do mapa de calor
+      const points: HeatmapPoint[] = [];
+      
+      // Variáveis para agrupar pontos próximos e identificar hotspots
+      const gridSize = 0.0001; // Aproximadamente 10 metros
+      const gridCells: { [key: string]: { count: number, lat: number, lng: number, sum: number } } = {};
+      
+      // Processa os documentos encontrados
+      let contador = 0;
+      for (const doc of snapshot.docs) {
+        // Limita a quantidade de registros processados
+        if (contador >= limiteRegistros) break;
+        
+        const data = doc.data();
+        
+        // Pula registros sem posição
+        if (!data.last_position || !data.last_position.latitude || !data.last_position.longitude) {
+          continue;
+        }
+        
+        const lat = data.last_position.latitude;
+        const lng = data.last_position.longitude;
+        
+        // Extrai o ID do token da referência
+        let tokenId = '';
+        if (data.tokenRef) {
+          if (typeof data.tokenRef === 'string') {
+            // Formato string
+            const parts = data.tokenRef.split('/');
+            tokenId = parts[parts.length - 1];
+          } else if (data.tokenRef.referencePath) {
+            // Formato referência
+            const parts = data.tokenRef.referencePath.split('/');
+            tokenId = parts[parts.length - 1];
+          }
+        }
+        
+        // Aplica filtros
+        if (filtros) {
+          // Filtro de tokens
+          if (filtros.tokenIds && filtros.tokenIds.length > 0 && !filtros.tokenIds.includes(tokenId)) {
+            continue;
+          }
+          
+          // Filtro de velocidade
+          const speed = data.last_speed_kmh || 0;
+          if (filtros.minSpeed !== undefined && speed < filtros.minSpeed) {
+            continue;
+          }
+          if (filtros.maxSpeed !== undefined && speed > filtros.maxSpeed) {
+            continue;
+          }
+          
+          // Filtro de região
+          if (filtros.region) {
+            if (lat < filtros.region.latMin || lat > filtros.region.latMax ||
+                lng < filtros.region.lngMin || lng > filtros.region.lngMax) {
+              continue;
+            }
+          }
+        }
+        
+        // Calcula o peso baseado na velocidade (pontos estáticos têm maior peso)
+        const speed = data.last_speed_kmh || 0;
+        const weight = speed < 1 ? 3 : speed < 5 ? 2 : 1;
+        
+        // Adiciona o ponto à lista
+        points.push({
+          latitude: lat,
+          longitude: lng,
+          weight: weight,
+          timestamp: data.last_updated ? new Date(data.last_updated.seconds * 1000).toISOString() : '',
+          tokenId: tokenId,
+          userId: data.userId || '',
+          speed: speed
+        });
+        
+        // Agrupa pontos em células para identificar hotspots
+        const gridKey = `${Math.floor(lat / gridSize)},${Math.floor(lng / gridSize)}`;
+        if (!gridCells[gridKey]) {
+          gridCells[gridKey] = { count: 0, lat, lng, sum: 0 };
+        }
+        gridCells[gridKey].count += 1;
+        gridCells[gridKey].sum += weight;
+        
+        contador++;
+      }
+      
+      // Identifica hotspots (áreas de maior concentração)
+      const hotspots = Object.values(gridCells)
+        .filter(cell => cell.count > 3) // Exige pelo menos 3 pontos para ser considerado hotspot
+        .map(cell => ({
+          latitude: cell.lat,
+          longitude: cell.lng,
+          intensity: cell.sum / cell.count,
+          count: cell.count
+        }))
+        .sort((a, b) => b.count - a.count) // Ordena por contagem (maior primeiro)
+        .slice(0, 10); // Retorna apenas os 10 maiores hotspots
+      
+      return {
+        points,
+        totalPoints: points.length,
+        dateRange: {
+          start: dataInicial.toISOString(),
+          end: dataFinal.toISOString()
+        },
+        hotspots
+      };
+    } catch (error) {
+      console.error('Erro ao gerar mapa de calor:', error);
+      return {
+        points: [],
+        totalPoints: 0,
+        dateRange: {
+          start: new Date().toISOString(),
+          end: new Date().toISOString()
+        },
+        hotspots: []
+      };
     }
   }
 

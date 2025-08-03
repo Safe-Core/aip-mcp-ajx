@@ -374,6 +374,63 @@ class CondominioAccessMCPServer {
               required: [],
             },
           },
+          {
+            name: 'gerar_mapa_de_calor',
+            description: 'Gera um mapa de calor baseado nos dados de localização rastreados',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                dias_atras: {
+                  type: 'number',
+                  description: 'Número de dias para incluir no mapa (padrão: 7)',
+                  default: 7,
+                  minimum: 1,
+                  maximum: 30
+                },
+                limite_registros: {
+                  type: 'number',
+                  description: 'Limite máximo de registros a processar (padrão: 10000)',
+                  default: 10000,
+                  minimum: 1000,
+                  maximum: 100000
+                },
+                token_ids: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'IDs específicos de tokens para filtrar (opcional)'
+                },
+                velocidade_min: {
+                  type: 'number',
+                  description: 'Velocidade mínima em km/h para incluir (opcional)'
+                },
+                velocidade_max: {
+                  type: 'number',
+                  description: 'Velocidade máxima em km/h para incluir (opcional)'
+                },
+                regiao: {
+                  type: 'object',
+                  description: 'Limites geográficos para filtrar os dados (opcional)',
+                  properties: {
+                    lat_min: { type: 'number', description: 'Latitude mínima' },
+                    lat_max: { type: 'number', description: 'Latitude máxima' },
+                    lng_min: { type: 'number', description: 'Longitude mínima' },
+                    lng_max: { type: 'number', description: 'Longitude máxima' }
+                  }
+                },
+                incluir_mapa_html: {
+                  type: 'boolean',
+                  description: 'Incluir mapa HTML com visualização de calor',
+                  default: true
+                },
+                incluir_mapa_svg: {
+                  type: 'boolean',
+                  description: 'Incluir mapa SVG com visualização de calor',
+                  default: false
+                }
+              },
+              required: [],
+            },
+          },
         ],
       };
     });
@@ -413,6 +470,9 @@ class CondominioAccessMCPServer {
             
           case 'buscar_acesso_com_rastreamento':
             return await this.buscarAcessoComRastreamento(args);
+            
+          case 'gerar_mapa_de_calor':
+            return await this.gerarMapaDeCalor(args);
 
           default:
             throw new Error(`Ferramenta desconhecida: ${name}`);
@@ -752,22 +812,16 @@ class CondominioAccessMCPServer {
       // Se solicitou mapa SVG
       if (incluir_mapa_svg && visualizacoes.svg) {
         resposta.content.push({
-          type: 'artifact',
-          artifactType: 'image/svg+xml',
-          artifactId: 'mapa-rastreamento-svg',
-          title: 'Mapa de Rastreamento (SVG)',
-          data: visualizacoes.svg
+          type: 'text',
+          text: `### Mapa de Rastreamento (SVG)\n\n\`\`\`svg\n${visualizacoes.svg}\n\`\`\`\n\nPara visualizar este SVG, copie o código acima e salve-o como um arquivo .svg`
         });
       }
       
       // Se solicitou mapa HTML
       if (incluir_mapa_html && visualizacoes.html) {
         resposta.content.push({
-          type: 'artifact',
-          artifactType: 'text/html',
-          artifactId: 'mapa-rastreamento-html',
-          title: 'Mapa de Rastreamento (HTML)',
-          data: visualizacoes.html
+          type: 'text',
+          text: `### Mapa de Rastreamento (HTML)\n\n\`\`\`html\n${visualizacoes.html}\n\`\`\`\n\nPara visualizar este mapa, copie o código acima e salve-o como um arquivo .html`
         });
       }
       
@@ -969,22 +1023,16 @@ class CondominioAccessMCPServer {
         // Se solicitou mapa SVG
         if (incluir_mapa_svg && visualizacoes.svg) {
           resposta.content.push({
-            type: 'artifact',
-            artifactType: 'image/svg+xml',
-            artifactId: 'mapa-rastreamento-svg',
-            title: 'Mapa de Rastreamento (SVG)',
-            data: visualizacoes.svg
+            type: 'text',
+            text: `### Mapa de Rastreamento (SVG)\n\n\`\`\`svg\n${visualizacoes.svg}\n\`\`\`\n\nPara visualizar este SVG, copie o código acima e salve-o como um arquivo .svg`
           });
         }
         
         // Se solicitou mapa HTML
         if (incluir_mapa_html && visualizacoes.html) {
           resposta.content.push({
-            type: 'artifact',
-            artifactType: 'text/html',
-            artifactId: 'mapa-rastreamento-html',
-            title: 'Mapa de Rastreamento (HTML)',
-            data: visualizacoes.html
+            type: 'text',
+            text: `### Mapa de Rastreamento (HTML)\n\n\`\`\`html\n${visualizacoes.html}\n\`\`\`\n\nPara visualizar este mapa, copie o código acima e salve-o como um arquivo .html`
           });
         }
       }
@@ -997,6 +1045,181 @@ class CondominioAccessMCPServer {
           {
             type: 'text',
             text: `❌ Erro ao buscar acesso com rastreamento: ${error}`,
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Gera um mapa de calor baseado nos dados de localização
+   */
+  private async gerarMapaDeCalor(args: any) {
+    try {
+      const { 
+        dias_atras = 7, 
+        limite_registros = 10000,
+        token_ids,
+        velocidade_min,
+        velocidade_max,
+        regiao,
+        incluir_mapa_html = true,
+        incluir_mapa_svg = false
+      } = args;
+      
+      console.log(`Gerando mapa de calor para os últimos ${dias_atras} dias com limite de ${limite_registros} registros`);
+      
+      // Converte os parâmetros para o formato da API do FirestoreService
+      const filtros: any = {};
+      
+      if (token_ids && token_ids.length > 0) {
+        filtros.tokenIds = token_ids;
+      }
+      
+      if (velocidade_min !== undefined) {
+        filtros.minSpeed = velocidade_min;
+      }
+      
+      if (velocidade_max !== undefined) {
+        filtros.maxSpeed = velocidade_max;
+      }
+      
+      if (regiao) {
+        filtros.region = {
+          latMin: regiao.lat_min,
+          latMax: regiao.lat_max,
+          lngMin: regiao.lng_min,
+          lngMax: regiao.lng_max
+        };
+      }
+      
+      // Chama o serviço do Firestore
+      const resultadoMapaCalor = await this.firestoreService.gerarMapaDeCalor(
+        dias_atras,
+        limite_registros,
+        filtros
+      );
+      
+      // Prepara a resposta textual
+      let output = `# Mapa de Calor de Rastreamento\n\n`;
+      
+      // Adiciona período analisado
+      const dataInicio = new Date(resultadoMapaCalor.dateRange.start);
+      const dataFim = new Date(resultadoMapaCalor.dateRange.end);
+      
+      output += `## Período Analisado\n\n`;
+      output += `- **De:** ${dataInicio.toLocaleDateString()} ${dataInicio.toLocaleTimeString()}\n`;
+      output += `- **Até:** ${dataFim.toLocaleDateString()} ${dataFim.toLocaleTimeString()}\n`;
+      output += `- **Total:** ${dias_atras} dias\n\n`;
+      
+      // Adiciona estatísticas
+      output += `## Estatísticas\n\n`;
+      output += `- **Total de pontos processados:** ${resultadoMapaCalor.totalPoints.toLocaleString()}\n`;
+      
+      // Adiciona hotspots (locais de maior concentração)
+      if (resultadoMapaCalor.hotspots && resultadoMapaCalor.hotspots.length > 0) {
+        output += `\n## Hotspots (Áreas de maior concentração)\n\n`;
+        
+        resultadoMapaCalor.hotspots.forEach((hotspot, index) => {
+          output += `### Hotspot #${index + 1}\n\n`;
+          output += `- **Coordenadas:** ${hotspot.latitude.toFixed(6)}, ${hotspot.longitude.toFixed(6)}\n`;
+          output += `- **Intensidade:** ${hotspot.intensity.toFixed(2)}\n`;
+          output += `- **Registros:** ${hotspot.count}\n\n`;
+        });
+      }
+      
+      // Prepara a resposta com o texto
+      const resposta: any = {
+        content: [
+          {
+            type: 'text',
+            text: output,
+          },
+        ],
+      };
+      
+      // Adicionar visualização do mapa (isso exigiria implementar a geração de mapas de calor no TrackingVisualizer)
+      // Para exemplo, estamos apenas colocando um comentário sobre onde isso seria implementado
+      
+      if (incluir_mapa_html || incluir_mapa_svg) {
+        // Aqui seria integrado com o TrackingVisualizer para gerar um mapa de calor
+        // Isso exigiria uma nova função no TrackingVisualizer que aceitaria os pontos do mapa de calor
+        
+        output += `\n## Visualização\n\n`;
+        output += `Para uma visualização completa do mapa de calor, recomendamos usar ferramentas especializadas como:\n\n`;
+        output += `1. Importar os dados em um sistema GIS\n`;
+        output += `2. Visualizar através de ferramentas como QGIS, ArcGIS, ou Google Earth Pro\n`;
+        output += `3. Utilizar bibliotecas como Leaflet ou Google Maps com a camada de mapa de calor\n\n`;
+        
+        // Adicionamos um exemplo fictício do que poderia ser uma visualização
+        // Adicionamos informações sobre as visualizações disponíveis
+        if (incluir_mapa_svg) {
+          resposta.content.push({
+            type: 'text',
+            text: `*O suporte à visualização SVG para mapa de calor será adicionado em versão futura.*`
+          });
+        }
+        
+        if (incluir_mapa_html) {
+          // Para este exemplo, vamos gerar um HTML simplificado que mostra pontos
+          let htmlMapaCalor = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Mapa de Calor</title>
+  <meta charset="utf-8">
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    function initMap() {
+      const points = ${JSON.stringify(resultadoMapaCalor.points.slice(0, 1000))};
+      
+      const centerLat = points.length > 0 ? points[0].latitude : -23.550520;
+      const centerLng = points.length > 0 ? points[0].longitude : -46.633308;
+      
+      const map = new google.maps.Map(document.getElementById('map'), {
+        zoom: 15,
+        center: {lat: centerLat, lng: centerLng},
+        mapTypeId: 'satellite'
+      });
+
+      const heatmapData = points.map(point => ({
+        location: new google.maps.LatLng(point.latitude, point.longitude),
+        weight: point.weight || 1
+      }));
+
+      const heatmap = new google.maps.visualization.HeatmapLayer({
+        data: heatmapData,
+        map: map,
+        radius: 20
+      });
+    }
+  </script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=visualization&callback=initMap" async defer></script>
+</body>
+</html>`;
+          
+          // Adicionamos o HTML como texto em vez de artifact
+          resposta.content.push({
+            type: 'text',
+            text: `### Visualização HTML\n\nCódigo HTML para visualização do mapa de calor:\n\n\`\`\`html\n${htmlMapaCalor}\n\`\`\`\n\nPara usar este mapa de calor, copie o código acima e salve-o como um arquivo .html, substituindo 'YOUR_API_KEY' por uma chave válida da API Google Maps.`
+          });
+        }
+      }
+      
+      return resposta;
+    } catch (error) {
+      console.error('Erro ao gerar mapa de calor:', error);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `❌ Erro ao gerar mapa de calor: ${error}`,
           },
         ],
       };
